@@ -9,6 +9,9 @@ version = "0.1.0"
 [[package]]
 name = "gameboy-default-core"
 version = "0.1.0"
+dependencies = [
+ "gameboy-core-interface",
+]
 
 [[package]]
 name = "gameboy-frontend"
