@@ -1,11 +1,10 @@
 
 pub(super) struct AddressBus {
-    rom:  [u8; 0x8000],
+    rom: [u8; 0x8000],
     vram: [u8; 0x2000],
-    ram:  [u8; 0x2000],
-    oam:  [u8; 0xA0],
+    ram: [u8; 0x2000],
+    oam: [u8; 0xA0],
     hram: [u8; 0x0100],
-
 }
 
 impl AddressBus {

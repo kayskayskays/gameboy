@@ -13,19 +13,6 @@ pub(super) enum Register8 {
 }
 
 impl Register8 {
-    fn index(&self) -> usize {
-        match self {
-            Register8::A => 0,
-            Register8::B => 1,
-            Register8::C => 2,
-            Register8::D => 3,
-            Register8::E => 4,
-            Register8::H => 5,
-            Register8::L => 6,
-            Register8::F => 7,
-        }
-    }
-
     fn from_code(code: u8) -> Option<Register8> {
         match code & 0b111 {
             0b0111 => Some(Register8::A),
@@ -148,16 +135,31 @@ impl Registers {
     }
 }
 
+impl From<Register8> for usize {
+    fn from(value: Register8) -> Self {
+        match value {
+            Register8::A => 0,
+            Register8::B => 1,
+            Register8::C => 2,
+            Register8::D => 3,
+            Register8::E => 4,
+            Register8::H => 5,
+            Register8::L => 6,
+            Register8::F => 7,
+        }
+    }
+}
+
 impl Index<Register8> for Registers {
     type Output = u8;
 
     fn index(&self, index: Register8) -> &Self::Output {
-        &self.data[index.index()]
+        &self.data[usize::from(index)]
     }
 }
 
 impl IndexMut<Register8> for Registers {
     fn index_mut(&mut self, index: Register8) -> &mut Self::Output {
-        &mut self.data[index.index()]
+        &mut self.data[usize::from(index)]
     }
 }
