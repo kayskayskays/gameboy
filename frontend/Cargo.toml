@@ -1,0 +1,7 @@
+[package]
+name = "gameboy-frontend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gameboy-core-interface = { path = "../core-interface" }
