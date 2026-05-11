@@ -1,8 +1,8 @@
 use super::instructions::Instruction::{self, *};
 use super::registers::{flags::Flags, Register8::*, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
-use gameboy_core_interface::GameboyCore;
 use crate::instructions::Operand;
+use gameboy_core_interface::GameboyCore;
 
 struct Cpu {
     address_bus: AddressBus,
@@ -41,7 +41,7 @@ impl Cpu {
 
         let instruction = match opcode {
             0x40..=0x7F => Some(Instruction::decode_load(opcode)),
-            0x80..=0xBF => Some(Instruction::decode_accumulator(opcode)),
+            0x80..=0xBF => Some(Instruction::decode_arithmetic(opcode)),
             0xCB => {
                 let cb_opcode = self.address_bus.read(self.program_counter);
                 self.program_counter += 1;
@@ -62,7 +62,8 @@ impl Cpu {
             Load(first_operand, second_operand) => {
                 self.execute_load(first_operand, second_operand);
             }
-            Halt => self.halted = false
+            Halt => self.halted = false,
+            _ => todo!()
         }
     }
 
