@@ -70,6 +70,11 @@ impl Instruction {
                     if operand_id != HL_ID {
                         panic!("Could not resolve operand with id: {:#06x}", operand_id);
                     }
+                    
+                    // The idea is: either, we were able to resolve the operand,
+                    // or we get back a `HL`. `HL` may have special 
+                    // interpretation for certain instructions, so we keep it
+                    // separate from the standard `Register` operands.
                     Operand::HL
                 },
                 |register| Operand::Register(register)
