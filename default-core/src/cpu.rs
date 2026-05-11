@@ -1,13 +1,14 @@
 use super::instructions::Instruction::{self, *};
-use super::registers::{flags::Flags, Register8::*, Registers};
+use super::registers::{flags::Flags, Register8::*, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
 use gameboy_core_interface::GameboyCore;
-
+use crate::instructions::Operand;
 
 struct Cpu {
     address_bus: AddressBus,
     registers: Registers,
     program_counter: u16,
+    halted: bool,
 }
 
 impl GameboyCore for Cpu {
@@ -26,20 +27,25 @@ impl Cpu {
             address_bus: AddressBus::new(),
             registers: Registers::new(),
             program_counter: 0,
+            halted: false,
         }
     }
 
     fn step(&mut self) {
+        if self.halted {
+            return;
+        }
+
         let opcode = self.address_bus.read(self.program_counter);
         self.program_counter += 1;
 
         let instruction = match opcode {
-            0x40..=0x7F => Instruction::decode_load(opcode),
-            0x80..=0xBF => Instruction::decode_alu(opcode),
+            0x40..=0x7F => Some(Instruction::decode_load(opcode)),
+            0x80..=0xBF => Some(Instruction::decode_accumulator(opcode)),
             0xCB => {
                 let cb_opcode = self.address_bus.read(self.program_counter);
                 self.program_counter += 1;
-                Instruction::decode_cb(cb_opcode)
+                Some(Instruction::decode_cb(cb_opcode))
             }
             _ => None,
         };
@@ -53,6 +59,32 @@ impl Cpu {
 
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
+            Load(first_operand, second_operand) => {
+                self.execute_load(first_operand, second_operand);
+            }
+            Halt => self.halted = false
+        }
+    }
+
+    fn execute_load(&mut self, first_operand: Operand, second_operand: Operand) {
+        let address_from_hl = || self.registers.read16(RegisterPair::HL.into());
+
+        match (first_operand, second_operand) {
+            (Operand::Register(a), Operand::HL) => {
+                let address = address_from_hl();
+                let value = self.address_bus.read(address);
+                self.registers.write8(a, value);
+            },
+            (Operand::Register(a), Operand::Register(b)) => {
+                let value = self.registers.read8(b);
+                self.registers.write8(a, value);
+            },
+            (Operand::HL, Operand::Register(b)) => {
+                let address = address_from_hl();
+                let value = self.registers.read8(b);
+                self.address_bus.write(address, value);
+            },
+            _ => unreachable!()
         }
     }
 

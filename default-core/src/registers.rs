@@ -3,26 +3,37 @@ use crate::registers::flags::Flags;
 
 pub(super) mod flags;
 
-pub(super) enum Register {
-    R8(Register8),
-    R16(Register16)
-}
-
-pub(super) enum Register8 {
+#[derive(Eq, PartialEq)]
+pub(crate) enum Register8 {
     A, B, C, D, E, H, L, F
 }
 
 impl Register8 {
-    fn from_code(code: u8) -> Option<Register8> {
+    pub(crate) fn from_code(code: u8) -> Option<Register8> {
         match code & 0b111 {
-            0b0111 => Some(Register8::A),
-            0b0000 => Some(Register8::B),
-            0b0001 => Some(Register8::C),
-            0b0010 => Some(Register8::D),
-            0b0011 => Some(Register8::E),
-            0b0100 => Some(Register8::H),
-            0b0101 => Some(Register8::L),
+            0b111 => Some(Register8::A),
+            0b000 => Some(Register8::B),
+            0b001 => Some(Register8::C),
+            0b010 => Some(Register8::D),
+            0b011 => Some(Register8::E),
+            0b100 => Some(Register8::H),
+            0b101 => Some(Register8::L),
             _ => None,
+        }
+    }
+}
+
+impl Register8 {
+    fn index(&self) -> u8 {
+        match self {
+            Register8::A => 0,
+            Register8::B => 1,
+            Register8::C => 2,
+            Register8::D => 3,
+            Register8::E => 4,
+            Register8::H => 5,
+            Register8::L => 6,
+            Register8::F => 7,
         }
     }
 }
@@ -117,7 +128,7 @@ impl Registers {
         match register {
             Register16::Pair(register_pair) => {
                 let (lo, hi) = register_pair.lo_and_hi_registers();
-                (self[hi] as u16) << 8 | (self[lo] as u16)
+                (self.read8(hi) as u16) << 8 | (self.read8(lo) as u16)
             },
             Register16::StackPointer => self.stack_pointer,
         }
@@ -135,31 +146,16 @@ impl Registers {
     }
 }
 
-impl From<Register8> for usize {
-    fn from(value: Register8) -> Self {
-        match value {
-            Register8::A => 0,
-            Register8::B => 1,
-            Register8::C => 2,
-            Register8::D => 3,
-            Register8::E => 4,
-            Register8::H => 5,
-            Register8::L => 6,
-            Register8::F => 7,
-        }
-    }
-}
-
 impl Index<Register8> for Registers {
     type Output = u8;
 
     fn index(&self, index: Register8) -> &Self::Output {
-        &self.data[usize::from(index)]
+        &self.data[index.index() as usize]
     }
 }
 
 impl IndexMut<Register8> for Registers {
     fn index_mut(&mut self, index: Register8) -> &mut Self::Output {
-        &mut self.data[usize::from(index)]
+        &mut self.data[index.index() as usize]
     }
 }
