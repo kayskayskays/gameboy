@@ -1,14 +1,14 @@
 use crate::registers::Register8;
 use std::cmp::PartialEq;
+use Instruction::{ArithmeticOp, Compare, LogicalOp, Rotate, SetBit, SetZ, Shift, Swap};
 
 pub(super) enum Instruction {
     Load(Operand, Operand),
     Halt,
 
-    Add(Operand, Carry),
-    Sub(Operand, Carry),
-    And(Operand), Xor(Operand),
-    Or(Operand), Compare(Operand),
+    ArithmeticOp(Operand, Carry, ArithmeticOpType),
+    LogicalOp(Operand, LogicalOpType),
+    Compare(Operand),
 
     Rotate(Operand, BitwiseDirection, RotationType),
     Shift(Operand, BitwiseDirection, ShiftType),
@@ -16,6 +16,14 @@ pub(super) enum Instruction {
     SetZ(Operand, u8),
     SetBit(Operand, u8, SetType),
 }
+
+pub(super) enum LogicalOpType { AND, XOR, OR }
+
+trait Execute {
+    fn apply(&self, val: u8) -> u8;
+}
+
+pub(super) enum ArithmeticOpType { ADD, SUB }
 
 pub(super) enum Carry { TRUE, FALSE }
 pub(super) enum ShiftType { ARITHMETIC, LOGICAL }
@@ -32,32 +40,32 @@ pub(super) enum Operand {
 const HL_ID: u8 = 0b110;
 
 const ARITHMETIC_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
-    |op| Instruction::Add(op, Carry::FALSE),    // ADD
-    |op| Instruction::Add(op, Carry::TRUE),     // ADDC
-    |op| Instruction::Sub(op, Carry::FALSE),    // SUB
-    |op| Instruction::Sub(op, Carry::TRUE),     // SUBC
-    Instruction::And,       // AND
-    Instruction::Xor,       // XOR
-    Instruction::Or,        // OR
-    Instruction::Compare    // CP
+    |op| ArithmeticOp(op, Carry::FALSE, ArithmeticOpType::ADD), // ADD
+    |op| ArithmeticOp(op, Carry::TRUE, ArithmeticOpType::ADD),  // ADDC
+    |op| ArithmeticOp(op, Carry::FALSE, ArithmeticOpType::SUB), // SUB
+    |op| ArithmeticOp(op, Carry::TRUE, ArithmeticOpType::SUB),  // SUBC
+    |op| LogicalOp(op, LogicalOpType::AND), // AND
+    |op| LogicalOp(op, LogicalOpType::XOR), // XOR
+    |op| LogicalOp(op, LogicalOpType::OR),  // OR
+    Compare // CP
 ];
 
 const BITWISE_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
-    |op| Instruction::Rotate(op, BitwiseDirection::LEFT, RotationType::CIRCULAR),   // RLC
-    |op| Instruction::Rotate(op, BitwiseDirection::RIGHT, RotationType::CIRCULAR),  // RRC
-    |op| Instruction::Rotate(op, BitwiseDirection::LEFT, RotationType::CARRY),      // RL
-    |op| Instruction::Rotate(op, BitwiseDirection::RIGHT, RotationType::CARRY),     // RR
+    |op| Rotate(op, BitwiseDirection::LEFT, RotationType::CIRCULAR),   // RLC
+    |op| Rotate(op, BitwiseDirection::RIGHT, RotationType::CIRCULAR),  // RRC
+    |op| Rotate(op, BitwiseDirection::LEFT, RotationType::CARRY),      // RL
+    |op| Rotate(op, BitwiseDirection::RIGHT, RotationType::CARRY),     // RR
 
-    |op| Instruction::Shift(op, BitwiseDirection::LEFT, ShiftType::ARITHMETIC),     // SLA
-    |op| Instruction::Shift(op, BitwiseDirection::RIGHT, ShiftType::ARITHMETIC),    // SRA
-    Instruction::Swap,                                                                       // SWAP
-    |op| Instruction::Shift(op, BitwiseDirection::RIGHT, ShiftType::LOGICAL),       // SRL
+    |op| Shift(op, BitwiseDirection::LEFT, ShiftType::ARITHMETIC),     // SLA
+    |op| Shift(op, BitwiseDirection::RIGHT, ShiftType::ARITHMETIC),    // SRA
+    Swap,                                                                       // SWAP
+    |op| Shift(op, BitwiseDirection::RIGHT, ShiftType::LOGICAL),       // SRL
 ];
 
 const BITWISE_SET_CONSTRUCTORS: [fn(Operand, u8) -> Instruction; 3] = [
-    |op, idx| Instruction::SetZ(op, idx),                       // BIT
-    |op, idx| Instruction::SetBit(op, idx, SetType::UNSET),     // RES
-    |op, idx| Instruction::SetBit(op, idx, SetType::SET),       // SET
+    |op, idx| SetZ(op, idx),                       // BIT
+    |op, idx| SetBit(op, idx, SetType::UNSET),     // RES
+    |op, idx| SetBit(op, idx, SetType::SET),       // SET
 ];
 
 impl Instruction {
@@ -70,9 +78,9 @@ impl Instruction {
                     if operand_id != HL_ID {
                         panic!("Could not resolve operand with id: {:#06x}", operand_id);
                     }
-                    
+
                     // The idea is: either, we were able to resolve the operand,
-                    // or we get back a `HL`. `HL` may have special 
+                    // or we get back a `HL`. `HL` may have special
                     // interpretation for certain instructions, so we keep it
                     // separate from the standard `Register` operands.
                     Operand::HL

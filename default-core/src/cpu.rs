@@ -1,7 +1,7 @@
 use super::instructions::Instruction::{self, *};
 use super::registers::{flags::Flags, Register8, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
-use crate::instructions::{Carry, Operand};
+use crate::instructions::{Carry, ArithmeticOpType, Operand, LogicalOpType};
 use gameboy_core_interface::GameboyCore;
 
 struct Cpu {
@@ -11,7 +11,10 @@ struct Cpu {
     halted: bool,
 }
 
-struct CarryStatus(bool, bool);
+struct CarryStatus {
+    half_carry: bool,
+    carry: bool,
+}
 
 impl GameboyCore for Cpu {
     fn load_rom(&mut self, rom: &[u8]) {
@@ -59,43 +62,76 @@ impl Cpu {
         }
     }
 
-    fn carry_status(x: u8, y: u8, carry: u8) -> CarryStatus {
-        let half_carry = (x & 0xF) + (y & 0xF) + carry > 0xF;
-        let carry = x as u16 + y as u16 + carry as u16 > 0xFF;
-        CarryStatus(half_carry, carry)
+    fn carry_status(x: u8, y: u8, carry: u8, add: bool) -> CarryStatus {
+        let mut status = CarryStatus { half_carry: false, carry: false };
+
+        if add {
+            status.half_carry = (x & 0xF) + (y & 0xF) + carry > 0xF;
+            status.carry = x as u16 + y as u16 + carry as u16 > 0xFF;
+        } else {
+            status.half_carry = (x & 0xF) < ((y & 0xF) + carry);
+            status.carry = (x as u16) < (y as u16 + carry as u16)
+        }
+
+        status
     }
 
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Load(a, b) => self.execute_load(a, b),
-            Halt => self.halted = false,
-            Add(op, carry) => self.execute_add(op, carry),
+            Halt => self.halted = true,
+            ArithmeticOp(op, carry, op_type) =>
+                self.execute_arithmetic_op(op, carry, op_type),
+            LogicalOp(op, op_type) =>
+                self.execute_logical(op, op_type),
             _ => todo!()
         }
     }
 
-    fn execute_add(&mut self, operand: Operand, carry: Carry) {
+    fn execute_arithmetic_op(&mut self, operand: Operand, carry: Carry, op_type: ArithmeticOpType) {
         let current_value = self.registers.read8(Register8::A);
-
-        let value_to_add = match operand {
-            Operand::Register(register) => self.registers.read8(register),
-            Operand::HL => self.address_bus.read(self.address_from_hl())
-        };
+        let new_value = self.read_value_from_operand(operand);
 
         let carry = if let Carry::TRUE = carry { 1 } else { 0 };
 
-        let carry_status = Cpu::carry_status(current_value, value_to_add, carry);
-        let sum = current_value.wrapping_add(carry).wrapping_add(value_to_add);
+        let add = matches!(op_type, ArithmeticOpType::ADD);
+        let carry_status = Cpu::carry_status(current_value, new_value, carry, add);
+
+        let result = if add {
+            current_value.wrapping_add(new_value).wrapping_add(carry)
+        }  else {
+            current_value.wrapping_sub(new_value).wrapping_sub(carry)
+        };
 
         let flags = Flags::new(
-            sum == 0,
-            false,
-            carry_status.0,
-            carry_status.1
+            result == 0,
+            !add,
+            carry_status.half_carry,
+            carry_status.carry
         );
 
         self.registers.write8(Register8::F, flags.into());
-        self.registers.write8(Register8::A, sum)
+        self.registers.write8(Register8::A, result)
+    }
+
+    fn read_value_from_operand(&self, operand: Operand) -> u8 {
+        match operand {
+            Operand::Register(register) => self.registers.read8(register),
+            Operand::HL => self.address_bus.read(self.address_from_hl())
+        }
+    }
+
+    fn execute_logical(&mut self, operand: Operand, logical_op_type: LogicalOpType) {
+        let current_value = self.registers.read8(Register8::A);
+        let new_value = self.read_value_from_operand(operand);
+
+        let result =  match logical_op_type {
+            LogicalOpType::AND => current_value & new_value,
+            LogicalOpType::XOR => current_value ^ new_value,
+            LogicalOpType::OR => current_value | new_value,
+        };
+
+        self.registers.write8(Register8::A, result)
     }
 
     fn address_from_hl(&self) -> u16 {
@@ -126,18 +162,5 @@ impl Cpu {
         match opcode {
             _ => {}
         }
-    }
-
-    fn add(&mut self, value: u8) -> u8 {
-        let a_value = self.registers.read8(Register8::A);
-        let (new_value, carry) = a_value.overflowing_add(value);
-
-        let half_carry = (a_value & 0xF) + (value & 0xF) > 0xF;
-        self.registers.write8(
-            Register8::F,
-            Flags::new(false, false, half_carry, carry).into()
-        );
-
-        new_value
     }
 }

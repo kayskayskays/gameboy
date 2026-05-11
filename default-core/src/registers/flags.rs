@@ -4,10 +4,10 @@ const HALF_CARRY_MASK: u8 = 0b0010_0000;
 const CARRY_MASK: u8 = 0b0001_0000;
 
 pub(crate) struct Flags {
-    zero: bool,
-    subtract: bool,
-    half_carry: bool,
-    carry: bool,
+    pub(crate) zero: bool,
+    pub(crate) subtract: bool,
+    pub(crate) half_carry: bool,
+    pub(crate) carry: bool,
 }
 
 impl Flags {
