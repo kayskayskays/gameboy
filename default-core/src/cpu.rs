@@ -1,7 +1,7 @@
 use super::instructions::Instruction::{self, *};
 use super::registers::{flags::Flags, Register8, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
-use crate::instructions::{ArithmeticOperationType, BitwiseDirection, BitwiseInstruction, Carry, LogicalInstructionType, Operand, RotationType, ShiftType};
+use crate::instructions::{ArithmeticOperationType, BitwiseDirection, BitwiseInstruction, Carry, LogicalInstructionType, Operand, RotationType, SetType, ShiftType};
 use gameboy_core_interface::GameboyCore;
 use BitwiseInstruction::{Rotate, SetBit, SetZero, Shift, Swap};
 
@@ -33,16 +33,6 @@ impl CarryStatus {
     }
 }
 
-impl GameboyCore for Cpu {
-    fn load_rom(&mut self, rom: &[u8]) {
-        self.address_bus.load_rom(rom)
-    }
-
-    fn step(&mut self) {
-        self.step()
-    }
-}
-
 impl Cpu {
     fn new() -> Self {
         Cpu {
@@ -61,10 +51,12 @@ impl Cpu {
 
         let instruction = Instruction::decode_load(opcode)
             .or_else(|| Instruction::decode_arithmetic(opcode))
-            .or_else(|| Instruction::decode_cb(opcode, || {
-                self.program_counter += 1;
-                self.address_bus.read(self.program_counter)
-            }));
+            .or_else(|| {
+                Instruction::decode_bitwise(opcode, || {
+                    self.program_counter += 1;
+                    self.address_bus.read(self.program_counter)
+                })
+            });
 
         if let Some(instruction) = instruction {
             self.execute(instruction);
@@ -97,36 +89,21 @@ impl Cpu {
 
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
-            Load(a, b) => self.execute_load(a, b),
+            Load(dst, src) => self.execute_load(dst, src),
             Halt => self.halted = true,
-            Arithmetic(op, carry, op_type) => self.execute_arithmetic(op, carry, op_type),
+            Arithmetic(op, op_type, carry) => self.execute_arithmetic(op, op_type, carry),
             Logical(op, op_type) => self.execute_logical(op, op_type),
             Compare(op) => self.execute_compare(op),
             Bitwise(bitwise_instruction) => self.execute_bitwise(bitwise_instruction),
         }
     }
 
-    fn execute_load(&mut self, first_operand: Operand, second_operand: Operand) {
-        match (first_operand, second_operand) {
-            (Operand::Register(a), Operand::HL) => {
-                let address = self.address_from_hl();
-                let value = self.address_bus.read(address);
-                self.registers.write8(a, value);
-            },
-            (Operand::Register(a), Operand::Register(b)) => {
-                let value = self.registers.read8(b);
-                self.registers.write8(a, value);
-            },
-            (Operand::HL, Operand::Register(b)) => {
-                let address = self.address_from_hl();
-                let value = self.registers.read8(b);
-                self.address_bus.write(address, value);
-            },
-            _ => unreachable!()
-        }
+    fn execute_load(&mut self, dst: Operand, src: Operand) {
+        let value = self.read_value_from_operand(&src);
+        self.write_value_to_operand(&dst, value);
     }
 
-    fn execute_arithmetic(&mut self, operand: Operand, carry: Carry, op_type: ArithmeticOperationType) {
+    fn execute_arithmetic(&mut self, operand: Operand, op_type: ArithmeticOperationType, carry: Carry) {
         let accumulator = self.accumulator();
         let operand_value = self.read_value_from_operand(&operand);
 
@@ -177,7 +154,7 @@ impl Cpu {
             Shift(op, direction, shift_type) => self.execute_bitwise_shift(op, direction, shift_type),
             Swap(op) => self.execute_bitwise_swap(op),
             SetZero(op, bit_idx) => self.execute_set_zero(op, bit_idx),
-            SetBit(Operand, u8, SetType) => todo!(),
+            SetBit(op, bit_idx, set_type) => self.execute_set_bit(op, bit_idx, set_type),
         }
     }
 
@@ -269,9 +246,31 @@ impl Cpu {
         self.registers.update_flags(|flags| flags.zero = bit_value != 0);
     }
 
+    fn execute_set_bit(&mut self, operand: Operand, bit_idx: u8, set_type: SetType) {
+        let operand_value = self.read_value_from_operand(&operand);
+
+        let result = if matches!(set_type, SetType::SET) {
+            operand_value | (1 << bit_idx)
+        } else {
+            operand_value & !(1 << bit_idx)
+        };
+
+        self.write_value_to_operand(&operand, result);
+    }
+
     fn execute_raw(&mut self, opcode: u8) {
         match opcode {
             _ => {}
         }
+    }
+}
+
+impl GameboyCore for Cpu {
+    fn load_rom(&mut self, rom: &[u8]) {
+        self.address_bus.load_rom(rom)
+    }
+
+    fn step(&mut self) {
+        self.step()
     }
 }

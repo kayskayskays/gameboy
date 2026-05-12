@@ -7,7 +7,7 @@ pub(super) enum Instruction {
     Load(Operand, Operand),
     Halt,
 
-    Arithmetic(Operand, Carry, ArithmeticOperationType),
+    Arithmetic(Operand, ArithmeticOperationType, Carry),
     Logical(Operand, LogicalInstructionType),
     Compare(Operand),
     Bitwise(BitwiseInstruction)
@@ -40,10 +40,10 @@ pub(super) enum Operand {
 const HL_ID: u8 = 0b110;
 
 const ARITHMETIC_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
-    |op| Arithmetic(op, Carry::FALSE, ArithmeticOperationType::ADD), // ADD
-    |op| Arithmetic(op, Carry::TRUE, ArithmeticOperationType::ADD),  // ADDC
-    |op| Arithmetic(op, Carry::FALSE, ArithmeticOperationType::SUB), // SUB
-    |op| Arithmetic(op, Carry::TRUE, ArithmeticOperationType::SUB),  // SUBC
+    |op| Arithmetic(op, ArithmeticOperationType::ADD, Carry::FALSE), // ADD
+    |op| Arithmetic(op, ArithmeticOperationType::ADD, Carry::TRUE),  // ADDC
+    |op| Arithmetic(op, ArithmeticOperationType::SUB, Carry::FALSE), // SUB
+    |op| Arithmetic(op, ArithmeticOperationType::SUB, Carry::TRUE),  // SUBC
     |op| Logical(op, LogicalInstructionType::AND), // AND
     |op| Logical(op, LogicalInstructionType::XOR), // XOR
     |op| Logical(op, LogicalInstructionType::OR),  // OR
@@ -80,9 +80,9 @@ impl Instruction {
                     }
 
                     // The idea is: either, we were able to resolve the operand,
-                    // or we get back a `HL`. `HL` may have special
-                    // interpretation for certain instructions, so we keep it
-                    // separate from the standard `Register` operands.
+                    // or we get back a `HL`. The `HL` register is generally
+                    // used for address lookups, so we keep it separate from the
+                    // standard `Register` operands.
                     Operand::HL
                 },
                 Operand::Register
@@ -110,7 +110,7 @@ impl Instruction {
         Some(ARITHMETIC_INSTRUCTION_CONSTRUCTORS[idx](operand))
     }
 
-    pub(super) fn decode_cb<T>(opcode: u8, next_opcode_supplier: T) -> Option<Instruction>
+    pub(super) fn decode_bitwise<T>(opcode: u8, next_opcode_supplier: T) -> Option<Instruction>
     where
         T: FnOnce() -> u8,
     {
