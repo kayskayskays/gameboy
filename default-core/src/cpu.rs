@@ -1,5 +1,5 @@
-use super::instructions::Instruction::{self, *};
-use super::registers::{flags::Flags, Register8, RegisterPair, Registers};
+use crate::instructions::Instruction::{self, *};
+use crate::registers::{flags::Flags, Register16, Register8, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
 use crate::instructions::{ArithmeticOperationType, BitwiseDirection, BitwiseInstruction, Carry, LogicalInstructionType, Operand, RotationType, SetType, ShiftType};
 use gameboy_core_interface::GameboyCore;
@@ -46,17 +46,11 @@ impl Cpu {
     fn step(&mut self) {
         if self.halted { return }
 
-        let opcode = self.address_bus.read(self.program_counter);
-        self.program_counter += 1;
+        let opcode = self.next_program_byte();
 
         let instruction = Instruction::decode_load(opcode)
             .or_else(|| Instruction::decode_arithmetic(opcode))
-            .or_else(|| {
-                Instruction::decode_bitwise(opcode, || {
-                    self.program_counter += 1;
-                    self.address_bus.read(self.program_counter)
-                })
-            });
+            .or_else(|| Instruction::decode_bitwise(opcode, || self.next_program_byte()));
 
         if let Some(instruction) = instruction {
             self.execute(instruction);
@@ -85,6 +79,16 @@ impl Cpu {
 
     fn accumulator(&self) -> u8 {
         self.registers.read8(Register8::A)
+    }
+
+    fn stack_pointer(&self) -> u16 {
+        self.registers.read16(Register16::StackPointer)
+    }
+
+    fn next_program_byte(&mut self) -> u8 {
+        let next = self.address_bus.read(self.program_counter);
+        self.program_counter += 1;
+        next
     }
 
     fn execute(&mut self, instruction: Instruction) {
@@ -260,7 +264,11 @@ impl Cpu {
 
     fn execute_raw(&mut self, opcode: u8) {
         match opcode {
-            _ => {}
+            0xE8 => {
+                let immediate = self.next_program_byte() as i8 as u16;
+                self.registers.write16(Register16::StackPointer, self.stack_pointer().wrapping_add(immediate));
+            }
+            _ => todo!()
         }
     }
 }

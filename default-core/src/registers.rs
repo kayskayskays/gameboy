@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 use crate::registers::flags::Flags;
 
-pub(super) mod flags;
+pub(crate) mod flags;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Register8 {
@@ -38,14 +38,14 @@ impl Register8 {
     }
 }
 
-pub(super) enum RegisterPair {
+pub(crate) enum RegisterPair {
     BC,
     DE,
     HL,
     AF,
 }
 
-pub(super) enum Register16 {
+pub(crate) enum Register16 {
     Pair(RegisterPair),
     StackPointer,
 }
@@ -99,7 +99,7 @@ impl RegisterPair {
     }
 }
 
-pub(super) struct Registers {
+pub(crate) struct Registers {
     data: [u8; 8],
     stack_pointer: u16,
 }
@@ -116,7 +116,7 @@ impl Registers {
         Flags::from(self[Register8::F])
     }
 
-    pub(super) fn update_flags<T>(&mut self, flag_consumer: T)
+    pub(crate) fn update_flags<T>(&mut self, flag_consumer: T)
     where
         T: FnOnce(&mut Flags) -> (),
     {
@@ -125,19 +125,19 @@ impl Registers {
         self.set_flags(flags);
     }
 
-    pub(super) fn set_flags(&mut self, flags: Flags) {
+    pub(crate) fn set_flags(&mut self, flags: Flags) {
         self.write8(Register8::F, flags.into())
     }
 
-    pub(super) fn read8(&self, register: Register8) -> u8 {
+    pub(crate) fn read8(&self, register: Register8) -> u8 {
         self[register]
     }
 
-    pub(super) fn write8(&mut self, register: Register8, value: u8) {
+    pub(crate) fn write8(&mut self, register: Register8, value: u8) {
         self[register] = value;
     }
 
-    pub(super) fn read16(&self, register: Register16) -> u16 {
+    pub(crate) fn read16(&self, register: Register16) -> u16 {
         match register {
             Register16::Pair(register_pair) => {
                 let (lo, hi) = register_pair.lo_and_hi_registers();
@@ -147,7 +147,7 @@ impl Registers {
         }
     }
 
-    pub(super) fn write16(&mut self, register: Register16, value: u16) {
+    pub(crate) fn write16(&mut self, register: Register16, value: u16) {
         match register {
             Register16::Pair(register_pair) => {
                 let (lo, hi) = register_pair.lo_and_hi_registers();
