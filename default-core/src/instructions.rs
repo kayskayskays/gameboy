@@ -1,15 +1,19 @@
 use crate::registers::Register8;
 use std::cmp::PartialEq;
 use Instruction::*;
+use crate::instructions::BitwiseInstruction::{Rotate, SetBit, SetZ, Shift, Swap};
 
 pub(super) enum Instruction {
     Load(Operand, Operand),
     Halt,
 
-    ArithmeticOp(Operand, Carry, ArithmeticOpType),
-    LogicalOp(Operand, LogicalOpType),
+    Arithmetic(Operand, Carry, ArithmeticOperationType),
+    Logical(Operand, LogicalInstructionType),
     Compare(Operand),
+    Bitwise(BitwiseInstruction)
+}
 
+pub(super) enum BitwiseInstruction {
     Rotate(Operand, BitwiseDirection, RotationType),
     Shift(Operand, BitwiseDirection, ShiftType),
     Swap(Operand),
@@ -17,9 +21,9 @@ pub(super) enum Instruction {
     SetBit(Operand, u8, SetType),
 }
 
-pub(super) enum LogicalOpType { AND, XOR, OR }
+pub(super) enum LogicalInstructionType { AND, XOR, OR }
 
-pub(super) enum ArithmeticOpType { ADD, SUB }
+pub(super) enum ArithmeticOperationType { ADD, SUB }
 
 pub(super) enum Carry { TRUE, FALSE }
 pub(super) enum ShiftType { ARITHMETIC, LOGICAL }
@@ -36,17 +40,17 @@ pub(super) enum Operand {
 const HL_ID: u8 = 0b110;
 
 const ARITHMETIC_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
-    |op| ArithmeticOp(op, Carry::FALSE, ArithmeticOpType::ADD), // ADD
-    |op| ArithmeticOp(op, Carry::TRUE, ArithmeticOpType::ADD),  // ADDC
-    |op| ArithmeticOp(op, Carry::FALSE, ArithmeticOpType::SUB), // SUB
-    |op| ArithmeticOp(op, Carry::TRUE, ArithmeticOpType::SUB),  // SUBC
-    |op| LogicalOp(op, LogicalOpType::AND), // AND
-    |op| LogicalOp(op, LogicalOpType::XOR), // XOR
-    |op| LogicalOp(op, LogicalOpType::OR),  // OR
-    Compare // CP
+    |op| Arithmetic(op, Carry::FALSE, ArithmeticOperationType::ADD), // ADD
+    |op| Arithmetic(op, Carry::TRUE, ArithmeticOperationType::ADD),  // ADDC
+    |op| Arithmetic(op, Carry::FALSE, ArithmeticOperationType::SUB), // SUB
+    |op| Arithmetic(op, Carry::TRUE, ArithmeticOperationType::SUB),  // SUBC
+    |op| Logical(op, LogicalInstructionType::AND), // AND
+    |op| Logical(op, LogicalInstructionType::XOR), // XOR
+    |op| Logical(op, LogicalInstructionType::OR),  // OR
+    Compare
 ];
 
-const BITWISE_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
+const BITWISE_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> BitwiseInstruction; 8] = [
     |op| Rotate(op, BitwiseDirection::LEFT, RotationType::CIRCULAR),   // RLC
     |op| Rotate(op, BitwiseDirection::RIGHT, RotationType::CIRCULAR),  // RRC
     |op| Rotate(op, BitwiseDirection::LEFT, RotationType::CARRY),      // RL
@@ -58,7 +62,7 @@ const BITWISE_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> Instruction; 8] = [
     |op| Shift(op, BitwiseDirection::RIGHT, ShiftType::LOGICAL),       // SRL
 ];
 
-const BITWISE_SET_CONSTRUCTORS: [fn(Operand, u8) -> Instruction; 3] = [
+const BITWISE_SET_CONSTRUCTORS: [fn(Operand, u8) -> BitwiseInstruction; 3] = [
     |op, idx| SetZ(op, idx),                       // BIT
     |op, idx| SetBit(op, idx, SetType::UNSET),     // RES
     |op, idx| SetBit(op, idx, SetType::SET),       // SET
@@ -127,6 +131,6 @@ impl Instruction {
             }
         };
 
-        Some(instruction)
+        Some(Bitwise(instruction))
     }
 }

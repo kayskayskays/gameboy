@@ -3,7 +3,7 @@ use crate::registers::flags::Flags;
 
 pub(super) mod flags;
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Register8 {
     A, B, C, D, E, H, L, F
 }
@@ -114,6 +114,19 @@ impl Registers {
 
     pub fn flags(&self) -> Flags {
         Flags::from(self[Register8::F])
+    }
+
+    pub(super) fn update_flags<T>(&mut self, flag_consumer: T)
+    where
+        T: FnOnce(&mut Flags) -> (),
+    {
+        let mut flags = self.flags();
+        flag_consumer(&mut flags);
+        self.set_flags(flags);
+    }
+
+    pub(super) fn set_flags(&mut self, flags: Flags) {
+        self.write8(Register8::F, flags.into())
     }
 
     pub(super) fn read8(&self, register: Register8) -> u8 {
