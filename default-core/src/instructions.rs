@@ -1,7 +1,7 @@
 use crate::registers::Register8;
 use std::cmp::PartialEq;
 use Instruction::*;
-use crate::instructions::BitwiseInstruction::{Rotate, SetBit, SetZ, Shift, Swap};
+use crate::instructions::BitwiseInstruction::{Rotate, SetBit, SetZero, Shift, Swap};
 
 pub(super) enum Instruction {
     Load(Operand, Operand),
@@ -17,7 +17,7 @@ pub(super) enum BitwiseInstruction {
     Rotate(Operand, BitwiseDirection, RotationType),
     Shift(Operand, BitwiseDirection, ShiftType),
     Swap(Operand),
-    SetZ(Operand, u8),
+    SetZero(Operand, u8),
     SetBit(Operand, u8, SetType),
 }
 
@@ -63,7 +63,7 @@ const BITWISE_INSTRUCTION_CONSTRUCTORS: [fn(Operand) -> BitwiseInstruction; 8] =
 ];
 
 const BITWISE_SET_CONSTRUCTORS: [fn(Operand, u8) -> BitwiseInstruction; 3] = [
-    |op, idx| SetZ(op, idx),                       // BIT
+    |op, idx| SetZero(op, idx),                       // BIT
     |op, idx| SetBit(op, idx, SetType::UNSET),     // RES
     |op, idx| SetBit(op, idx, SetType::SET),       // SET
 ];

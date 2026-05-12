@@ -3,7 +3,7 @@ use super::registers::{flags::Flags, Register8, RegisterPair, Registers};
 use crate::address_bus::AddressBus;
 use crate::instructions::{ArithmeticOperationType, BitwiseDirection, BitwiseInstruction, Carry, LogicalInstructionType, Operand, RotationType, ShiftType};
 use gameboy_core_interface::GameboyCore;
-use BitwiseInstruction::{Rotate, SetBit, SetZ, Shift, Swap};
+use BitwiseInstruction::{Rotate, SetBit, SetZero, Shift, Swap};
 
 struct Cpu {
     address_bus: AddressBus,
@@ -99,13 +99,10 @@ impl Cpu {
         match instruction {
             Load(a, b) => self.execute_load(a, b),
             Halt => self.halted = true,
-            Arithmetic(op, carry, op_type) =>
-                self.execute_arithmetic(op, carry, op_type),
-            Logical(op, op_type) =>
-                self.execute_logical(op, op_type),
+            Arithmetic(op, carry, op_type) => self.execute_arithmetic(op, carry, op_type),
+            Logical(op, op_type) => self.execute_logical(op, op_type),
             Compare(op) => self.execute_compare(op),
             Bitwise(bitwise_instruction) => self.execute_bitwise(bitwise_instruction),
-            _ => todo!()
         }
     }
 
@@ -176,12 +173,10 @@ impl Cpu {
 
     fn execute_bitwise(&mut self, bitwise_instruction: BitwiseInstruction) {
         match bitwise_instruction {
-            Rotate(op, direction, rotation_type) =>
-                self.execute_bitwise_rotate(op, direction, rotation_type),
-            Shift(op, direction, shift_type) =>
-                self.execute_bitwise_shift(op, direction, shift_type),
+            Rotate(op, direction, rotation_type) => self.execute_bitwise_rotate(op, direction, rotation_type),
+            Shift(op, direction, shift_type) => self.execute_bitwise_shift(op, direction, shift_type),
             Swap(op) => self.execute_bitwise_swap(op),
-            SetZ(op, bit_idx) => todo!(),
+            SetZero(op, bit_idx) => self.execute_set_zero(op, bit_idx),
             SetBit(Operand, u8, SetType) => todo!(),
         }
     }
@@ -260,7 +255,18 @@ impl Cpu {
     }
 
     fn execute_bitwise_swap(&mut self, operand: Operand) {
-       let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(&operand);
+
+        let hi = operand_value & 0xF0;
+        let lo = operand_value & 0xF;
+
+        self.write_value_to_operand(&operand, (lo << 4) | (hi >> 4))
+    }
+
+    fn execute_set_zero(&mut self, operand: Operand, bit_idx: u8) {
+        let operand_value = self.read_value_from_operand(&operand);
+        let bit_value = (operand_value >> bit_idx) & 0b1;
+        self.registers.update_flags(|flags| flags.zero = bit_value != 0);
     }
 
     fn execute_raw(&mut self, opcode: u8) {
