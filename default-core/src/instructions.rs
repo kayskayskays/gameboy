@@ -1,6 +1,6 @@
 use crate::registers::Register8;
 use std::cmp::PartialEq;
-use Instruction::{ArithmeticOp, Compare, LogicalOp, Rotate, SetBit, SetZ, Shift, Swap};
+use Instruction::*;
 
 pub(super) enum Instruction {
     Load(Operand, Operand),
@@ -18,10 +18,6 @@ pub(super) enum Instruction {
 }
 
 pub(super) enum LogicalOpType { AND, XOR, OR }
-
-trait Execute {
-    fn apply(&self, val: u8) -> u8;
-}
 
 pub(super) enum ArithmeticOpType { ADD, SUB }
 
@@ -85,44 +81,52 @@ impl Instruction {
                     // separate from the standard `Register` operands.
                     Operand::HL
                 },
-                |register| Operand::Register(register)
+                Operand::Register
             )
     }
-    pub(super) fn decode_load(opcode: u8) -> Instruction {
-        assert!((0x40..=0x7F).contains(&opcode));
+    pub(super) fn decode_load(opcode: u8) -> Option<Instruction> {
+        if !(0x40..=0x7F).contains(&opcode) { return None }
 
-        let first_operand = Instruction::decode_operand(opcode >> 3);
-        let second_operand = Instruction::decode_operand(opcode);
+        let dst = Instruction::decode_operand(opcode >> 3);
+        let src = Instruction::decode_operand(opcode);
 
-        if first_operand == Operand::HL && second_operand == Operand::HL {
-            // Seeing the HL operand twice corresponds to a HALT instruction.
-            Instruction::Halt
-        } else {
-            Instruction::Load(first_operand, second_operand)
-        }
+        let instruction = match (dst, src) {
+            (Operand::HL, Operand::HL) => Halt,
+            (dst, src) => Load(dst, src),
+        };
+        
+        Some(instruction)
     }
 
-    pub(super) fn decode_arithmetic(opcode: u8) -> Instruction {
-        assert!((0x80..=0xBF).contains(&opcode));
-
+    pub(super) fn decode_arithmetic(opcode: u8) -> Option<Instruction> {
+        if !(0x80..=0xBF).contains(&opcode) { return None }
+        
         let idx = ((opcode >> 3) & 0b111) as usize;
         let operand = Instruction::decode_operand(opcode);
-        ARITHMETIC_INSTRUCTION_CONSTRUCTORS[idx](operand)
+        Some(ARITHMETIC_INSTRUCTION_CONSTRUCTORS[idx](operand))
     }
-    
-    pub(super) fn decode_cb(opcode: u8) -> Instruction {
-        match opcode {
+
+    pub(super) fn decode_cb<T>(opcode: u8, next_opcode_supplier: T) -> Option<Instruction>
+    where
+        T: FnOnce() -> u8,
+    {
+        if opcode != 0xCB { return None }
+
+        let opcode = next_opcode_supplier();
+        let operand = Instruction::decode_operand(opcode);
+
+        let instruction = match opcode {
             0x00..=0x3F => {
                 let idx = ((opcode >> 3) & 0b111) as usize;
-                let operand = Instruction::decode_operand(opcode);
                 BITWISE_INSTRUCTION_CONSTRUCTORS[idx](operand)
             },
             _ => {
                 let idx = (opcode >> 6) as usize;
                 let bit_idx = (opcode >> 3) & 0b111;
-                let operand = Instruction::decode_operand(opcode);
                 BITWISE_SET_CONSTRUCTORS[idx](operand, bit_idx)
             }
-        }
+        };
+
+        Some(instruction)
     }
 }

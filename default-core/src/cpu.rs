@@ -37,23 +37,17 @@ impl Cpu {
     }
 
     fn step(&mut self) {
-        if self.halted {
-            return;
-        }
+        if self.halted { return }
 
         let opcode = self.address_bus.read(self.program_counter);
         self.program_counter += 1;
 
-        let instruction = match opcode {
-            0x40..=0x7F => Some(Instruction::decode_load(opcode)),
-            0x80..=0xBF => Some(Instruction::decode_arithmetic(opcode)),
-            0xCB => {
-                let cb_opcode = self.address_bus.read(self.program_counter);
+        let instruction = Instruction::decode_load(opcode)
+            .or_else(|| Instruction::decode_arithmetic(opcode))
+            .or_else(|| Instruction::decode_cb(opcode, || {
                 self.program_counter += 1;
-                Some(Instruction::decode_cb(cb_opcode))
-            }
-            _ => None,
-        };
+                self.address_bus.read(self.program_counter)
+            }));
 
         if let Some(instruction) = instruction {
             self.execute(instruction);
@@ -88,6 +82,17 @@ impl Cpu {
         }
     }
 
+    fn read_value_from_operand(&self, operand: Operand) -> u8 {
+        match operand {
+            Operand::Register(register) => self.registers.read8(register),
+            Operand::HL => self.address_bus.read(self.address_from_hl())
+        }
+    }
+
+    fn address_from_hl(&self) -> u16 {
+        self.registers.read16(RegisterPair::HL.into())
+    }
+
     fn execute_arithmetic_op(&mut self, operand: Operand, carry: Carry, op_type: ArithmeticOpType) {
         let current_value = self.registers.read8(Register8::A);
         let new_value = self.read_value_from_operand(operand);
@@ -114,13 +119,6 @@ impl Cpu {
         self.registers.write8(Register8::A, result)
     }
 
-    fn read_value_from_operand(&self, operand: Operand) -> u8 {
-        match operand {
-            Operand::Register(register) => self.registers.read8(register),
-            Operand::HL => self.address_bus.read(self.address_from_hl())
-        }
-    }
-
     fn execute_logical(&mut self, operand: Operand, logical_op_type: LogicalOpType) {
         let current_value = self.registers.read8(Register8::A);
         let new_value = self.read_value_from_operand(operand);
@@ -132,10 +130,6 @@ impl Cpu {
         };
 
         self.registers.write8(Register8::A, result)
-    }
-
-    fn address_from_hl(&self) -> u16 {
-        self.registers.read16(RegisterPair::HL.into())
     }
 
     fn execute_load(&mut self, first_operand: Operand, second_operand: Operand) {
