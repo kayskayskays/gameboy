@@ -37,17 +37,15 @@ impl Register8 {
         }
     }
 }
-
-pub(crate) enum RegisterPair {
-    BC,
-    DE,
-    HL,
-    AF,
-}
-
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Register16 {
     Pair(RegisterPair),
     StackPointer,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum RegisterPair { 
+    BC, DE, HL, AF,
 }
 
 impl From<RegisterPair> for Register16 {
@@ -59,22 +57,10 @@ impl From<RegisterPair> for Register16 {
 impl RegisterPair {
     fn lo_and_hi_registers(&self) -> (Register8, Register8) {
         match self {
-            RegisterPair::BC => (
-                Register8::B,
-                Register8::C
-            ),
-            RegisterPair::DE => (
-                Register8::D,
-                Register8::E
-            ),
-            RegisterPair::HL => (
-                Register8::H,
-                Register8::L
-            ),
-            RegisterPair::AF => (
-                Register8::A,
-                Register8::F
-            )
+            RegisterPair::BC => (Register8::B, Register8::C),
+            RegisterPair::DE => (Register8::D, Register8::E),
+            RegisterPair::HL => (Register8::H, Register8::L),
+            RegisterPair::AF => (Register8::A, Register8::F)
         }
     }
 
