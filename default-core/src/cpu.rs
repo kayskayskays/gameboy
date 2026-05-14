@@ -62,27 +62,40 @@ impl Cpu {
     fn read_value_from_operand(&self, operand: &Operand) -> u8 {
         match operand {
             Operand::Register(register) => self.registers.read8(*register),
-            Operand::HL => self.address_bus.read(self.address_from_hl())
+            Operand::HL => self.address_bus.read(self.hl_pointer())
         }
     }
 
     fn write_value_to_operand(&mut self, operand: &Operand, value: u8) {
         match operand {
             Operand::Register(register) => self.registers.write8(*register, value),
-            Operand::HL => self.address_bus.write(self.address_from_hl(), value)
+            Operand::HL => self.address_bus.write(self.hl_pointer(), value)
         }
     }
 
-    fn address_from_hl(&self) -> u16 {
+    fn hl_pointer(&self) -> u16 {
         self.registers.read16(RegisterPair::HL.into())
-    }
-
-    fn accumulator(&self) -> u8 {
-        self.registers.read8(Register8::A)
     }
 
     fn stack_pointer(&self) -> u16 {
         self.registers.read16(Register16::StackPointer)
+    }
+
+    fn stack_pop(&mut self) -> u8 {
+        let sp = self.stack_pointer();
+        let value = self.address_bus.read(sp);
+        self.registers.write16(Register16::StackPointer, sp.wrapping_add(1));
+        value
+    }
+
+    fn stack_push(&mut self, value: u8) {
+        let sp = self.stack_pointer().wrapping_sub(1);
+        self.registers.write16(Register16::StackPointer, sp);
+        self.address_bus.write(sp, value);
+    }
+
+    fn accumulator(&self) -> u8 {
+        self.registers.read8(Register8::A)
     }
 
     fn next_program_byte(&mut self) -> u8 {
@@ -174,24 +187,26 @@ impl Cpu {
             BitwiseDirection::LEFT => {
                 let shifted_operand_value = operand_value << 1;
 
-                if circular_rotation {
-                    let hi_bit = (operand_value & 0b1000_0000) >> 7;
-                    new_carry = hi_bit;
-                    shifted_operand_value | hi_bit
-                } else {
-                    shifted_operand_value | current_carry
-                }
+                shifted_operand_value |
+                    if circular_rotation {
+                        let hi_bit = (operand_value & 0b1000_0000) >> 7;
+                        new_carry = hi_bit;
+                        hi_bit
+                    } else {
+                        current_carry
+                    }
             }
             BitwiseDirection::RIGHT => {
                 let shifted_operand_value = operand_value >> 1;
 
-                if circular_rotation {
-                    let lo_bit = operand_value & 01;
-                    new_carry = lo_bit;
-                    shifted_operand_value | (lo_bit << 7)
-                } else {
-                    shifted_operand_value | (current_carry << 7)
-                }
+                shifted_operand_value |
+                    if circular_rotation {
+                        let lo_bit = operand_value & 0b1;
+                        new_carry = lo_bit;
+                        lo_bit << 7
+                    } else {
+                        current_carry << 7
+                    }
             }
         };
 
@@ -265,8 +280,43 @@ impl Cpu {
     fn execute_raw(&mut self, opcode: u8) {
         match opcode {
             0xE8 => {
+                // ADD SP, s8
                 let immediate = self.next_program_byte() as i8 as u16;
                 self.registers.write16(Register16::StackPointer, self.stack_pointer().wrapping_add(immediate));
+            }
+            opcode @ (0xC1 | 0xD1 | 0xE1 | 0xF1) => {
+                // POP
+                let register_pair = match opcode {
+                    0xC1 => RegisterPair::BC,
+                    0xD1 => RegisterPair::DE,
+                    0xE1 => RegisterPair::HL,
+                    0xF1 => RegisterPair::AF,
+                    _ => unreachable!(),
+                };
+
+                let lo = self.stack_pop();
+                let hi = self.stack_pop();
+                self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
+            }
+            opcode @ (0xC6 | 0xD6 | 0xE6 | 0xF6) => {
+                // PUSH
+                let register_pair = match opcode {
+                    0xC6 => RegisterPair::BC,
+                    0xD6 => RegisterPair::DE,
+                    0xE6 => RegisterPair::HL,
+                    0xF6 => RegisterPair::AF,
+                    _ => unreachable!(),
+                };
+
+                let value = self.registers.read16(register_pair.into());
+                self.stack_push((value >> 8) as u8);
+                self.stack_push(value as u8);
+            }
+            opcode @ (0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF) => {
+                // RST
+                self.stack_push((self.program_counter >> 8) as u8);
+                self.stack_push(self.program_counter as u8);
+                self.program_counter = (opcode - 0xC7) as u16;
             }
             _ => todo!()
         }
