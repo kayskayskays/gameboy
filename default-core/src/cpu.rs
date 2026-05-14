@@ -59,6 +59,31 @@ impl Cpu {
         }
     }
 
+    fn hl_pointer(&self) -> u16 {
+        self.registers.read16(RegisterPair::HL.into())
+    }
+
+    fn stack_pointer(&self) -> u16 {
+        self.registers.read16(Register16::StackPointer)
+    }
+
+    fn set_stack_pointer(&mut self, value: u16) {
+        self.registers.write16(Register16::StackPointer, value);
+    }
+
+    fn stack_pop(&mut self) -> u8 {
+        let sp = self.stack_pointer();
+        let value = self.address_bus.read(sp);
+        self.set_stack_pointer(sp.wrapping_add(1));
+        value
+    }
+
+    fn stack_push(&mut self, value: u8) {
+        let sp = self.stack_pointer().wrapping_sub(1);
+        self.set_stack_pointer(sp);
+        self.address_bus.write(sp, value);
+    }
+
     fn read_value_from_operand(&self, operand: &Operand) -> u8 {
         match operand {
             Operand::Immediate8(immediate ) => *immediate,
@@ -73,27 +98,6 @@ impl Cpu {
             Operand::HL => self.address_bus.write(self.hl_pointer(), value),
             Operand::Immediate8(_) => unreachable!(),
         }
-    }
-
-    fn hl_pointer(&self) -> u16 {
-        self.registers.read16(RegisterPair::HL.into())
-    }
-
-    fn stack_pointer(&self) -> u16 {
-        self.registers.read16(Register16::StackPointer)
-    }
-
-    fn stack_pop(&mut self) -> u8 {
-        let sp = self.stack_pointer();
-        let value = self.address_bus.read(sp);
-        self.registers.write16(Register16::StackPointer, sp.wrapping_add(1));
-        value
-    }
-
-    fn stack_push(&mut self, value: u8) {
-        let sp = self.stack_pointer().wrapping_sub(1);
-        self.registers.write16(Register16::StackPointer, sp);
-        self.address_bus.write(sp, value);
     }
 
     fn accumulator(&self) -> u8 {
@@ -306,6 +310,21 @@ impl Cpu {
                 self.stack_push((self.program_counter >> 8) as u8);
                 self.stack_push(self.program_counter as u8);
                 self.program_counter = (opcode - 0xC7) as u16;
+            }
+            opcode @ (0xC0 | 0xD0) => {
+                let flags = self.registers.flags();
+
+                let should_return = if opcode == 0xC0 {
+                    flags.zero
+                } else {
+                    flags.carry
+                };
+
+                if should_return {
+                    let lo = self.stack_pop();
+                    let hi = self.stack_pop();
+                    self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
+                }
             }
             _ => self.execute_raw_with_immediate(opcode)
         }
