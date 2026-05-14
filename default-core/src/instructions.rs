@@ -33,6 +33,7 @@ pub(super) enum SetType { SET, UNSET }
 
 #[derive(Eq, PartialEq)]
 pub(super) enum Operand {
+    Immediate8(u8),
     Register(Register8),
     HL,
 }

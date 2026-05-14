@@ -61,6 +61,7 @@ impl Cpu {
 
     fn read_value_from_operand(&self, operand: &Operand) -> u8 {
         match operand {
+            Operand::Immediate8(immediate ) => *immediate,
             Operand::Register(register) => self.registers.read8(*register),
             Operand::HL => self.address_bus.read(self.hl_pointer())
         }
@@ -69,7 +70,8 @@ impl Cpu {
     fn write_value_to_operand(&mut self, operand: &Operand, value: u8) {
         match operand {
             Operand::Register(register) => self.registers.write8(*register, value),
-            Operand::HL => self.address_bus.write(self.hl_pointer(), value)
+            Operand::HL => self.address_bus.write(self.hl_pointer(), value),
+            Operand::Immediate8(_) => unreachable!(),
         }
     }
 
@@ -279,38 +281,25 @@ impl Cpu {
 
     fn execute_raw(&mut self, opcode: u8) {
         match opcode {
-            0xE8 => {
-                // ADD SP, s8
-                let immediate = self.next_program_byte() as i8 as u16;
-                self.registers.write16(Register16::StackPointer, self.stack_pointer().wrapping_add(immediate));
-            }
-            opcode @ (0xC1 | 0xD1 | 0xE1 | 0xF1) => {
-                // POP
-                let register_pair = match opcode {
-                    0xC1 => RegisterPair::BC,
-                    0xD1 => RegisterPair::DE,
-                    0xE1 => RegisterPair::HL,
-                    0xF1 => RegisterPair::AF,
+            opcode @ (0xC1 | 0xD1 | 0xE1 | 0xF1 | 0xC5 | 0xD5 | 0xE5 | 0xF5) => {
+                // POP / PUSH
+                let register_pair = match opcode >> 4 {
+                    0xC => RegisterPair::BC,
+                    0xD => RegisterPair::DE,
+                    0xE => RegisterPair::HL,
+                    0xF => RegisterPair::AF,
                     _ => unreachable!(),
                 };
 
-                let lo = self.stack_pop();
-                let hi = self.stack_pop();
-                self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
-            }
-            opcode @ (0xC6 | 0xD6 | 0xE6 | 0xF6) => {
-                // PUSH
-                let register_pair = match opcode {
-                    0xC6 => RegisterPair::BC,
-                    0xD6 => RegisterPair::DE,
-                    0xE6 => RegisterPair::HL,
-                    0xF6 => RegisterPair::AF,
-                    _ => unreachable!(),
-                };
-
-                let value = self.registers.read16(register_pair.into());
-                self.stack_push((value >> 8) as u8);
-                self.stack_push(value as u8);
+                if opcode & 0xF == 1 {
+                    let lo = self.stack_pop();
+                    let hi = self.stack_pop();
+                    self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
+                } else {
+                    let value = self.registers.read16(register_pair.into());
+                    self.stack_push((value >> 8) as u8);
+                    self.stack_push(value as u8);
+                }
             }
             opcode @ (0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF) => {
                 // RST
@@ -318,7 +307,25 @@ impl Cpu {
                 self.stack_push(self.program_counter as u8);
                 self.program_counter = (opcode - 0xC7) as u16;
             }
-            _ => todo!()
+            _ => self.execute_raw_with_immediate(opcode)
+        }
+    }
+
+    fn execute_raw_with_immediate(&mut self, opcode: u8) {
+        let immediate = self.next_program_byte();
+        let immediate_operand = Operand::Immediate8(immediate);
+
+        match opcode {
+            0xE8 => self.registers.write16(Register16::StackPointer, self.stack_pointer().wrapping_add(immediate as i8 as u16)),
+            0xC6 => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::ADD, Carry::FALSE),
+            0xD6 => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::SUB, Carry::FALSE),
+            0xCE => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::ADD, Carry::TRUE),
+            0xDE => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::SUB, Carry::TRUE),
+            0xE6 => self.execute_logical(immediate_operand, LogicalInstructionType::AND),
+            0xF6 => self.execute_logical(immediate_operand, LogicalInstructionType::OR),
+            0xEE => self.execute_logical(immediate_operand, LogicalInstructionType::XOR),
+            0xFE => self.execute_compare(immediate_operand),
+            _ => todo!(),
         }
     }
 }
