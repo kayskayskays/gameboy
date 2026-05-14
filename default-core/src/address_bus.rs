@@ -42,7 +42,7 @@ impl Index<u16> for AddressBus {
             0xC000..=0xDFFF => &self.ram[(index - 0xC000) as usize],
             0xFE00..=0xFE9F => &self.oam[(index - 0xFE00) as usize],
             0xFEA0..=0xFEFF => unreachable!(),
-            0xFF00..=0xFFFF => &self.hram[(index - 0xFF00) as usize],
+            0xFF80..=0xFFFE => &self.hram[(index - 0xFF80) as usize],
             _ => todo!("unmapped: {:#06x}", index),
         }
     }
@@ -56,7 +56,7 @@ impl IndexMut<u16> for AddressBus {
             0xC000..=0xDFFF => &mut self.ram[(index - 0xC000) as usize],
             0xFE00..=0xFE9F => &mut self.oam[(index - 0xFE00) as usize],
             0xFEA0..=0xFEFF => unreachable!(),
-            0xFF00..=0xFFFF => &mut self.hram[(index - 0xFF00) as usize],
+            0xFF80..=0xFFFF => &mut self.hram[(index - 0xFF80) as usize],
             _ => todo!("unmapped: {:#06x}", index),
         }
     }
