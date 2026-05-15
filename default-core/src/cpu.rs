@@ -88,7 +88,7 @@ impl Cpu {
             Operand8::Immediate8(immediate ) => *immediate,
             Operand8::Address(address) => self.address_bus.read(*address),
             Operand8::Register(register) => self.registers.read8(*register),
-            Operand8::AddressHL => self.address_bus.read(self.hl_pointer())
+            Operand8::AddressHl => self.address_bus.read(self.hl_pointer())
         }
     }
 
@@ -97,7 +97,7 @@ impl Cpu {
             Operand8::Immediate8(_) => unreachable!(),
             Operand8::Address(address) => self.address_bus.write(*address, value),
             Operand8::Register(register) => self.registers.write8(*register, value),
-            Operand8::AddressHL => self.address_bus.write(self.hl_pointer(), value),
+            Operand8::AddressHl => self.address_bus.write(self.hl_pointer(), value),
         }
     }
 
@@ -397,10 +397,24 @@ impl Cpu {
                     self.execute_load(register_operand, address_operand);
                 }
             }
+            opcode @ (0x20 | 0x30 | 0x18 | 0x28 | 0x38) => {
+                let flags = self.registers.flags();
+
+                let require_flag_unset = opcode & 0xF == 0;
+                let flag_set = match opcode >> 4 {
+                    0x2 => flags.zero,
+                    0x3 => flags.carry,
+                    _ => true
+                };
+
+                if require_flag_unset ^ flag_set {
+                    self.program_counter = self.program_counter.wrapping_add(immediate as i8 as i16 as u16);
+                }
+            }
             _ => {
                 let next_immediate = self.next_program_byte();
                 self.execute_raw_with_immediate16(opcode, (immediate as u16) << 8 | (next_immediate as u16));
-            },
+            }
         }
     }
 

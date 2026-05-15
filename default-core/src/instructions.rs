@@ -26,7 +26,7 @@ pub(super) enum Operand8 {
     Immediate8(u8),
     Address(u16),
     Register(Register8),
-    AddressHL,
+    AddressHl,
 }
 
 #[derive(Eq, PartialEq)]
@@ -86,10 +86,10 @@ impl Instruction {
                     }
 
                     // The idea is: either, we were able to resolve the operand,
-                    // or we get back a `HL`. The `HL` register is generally
-                    // used for address lookups, so we keep it separate from the
-                    // standard `Register` operands.
-                    Operand8::AddressHL
+                    // or we get back an `AddressHL`. The `HL` register is
+                    // generally used for address lookups, so we keep it
+                    // separate from the other register operands.
+                    Operand8::AddressHl
                 },
                 Operand8::Register
             )
@@ -101,7 +101,7 @@ impl Instruction {
         let src = Instruction::decode_operand(opcode);
 
         let instruction = match (dst, src) {
-            (Operand8::AddressHL, Operand8::AddressHL) => Halt,
+            (Operand8::AddressHl, Operand8::AddressHl) => Halt,
             (dst, src) => Load(dst, src),
         };
         
