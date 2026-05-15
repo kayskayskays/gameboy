@@ -305,6 +305,7 @@ impl Cpu {
 
     fn execute_raw(&mut self, opcode: u8) {
         match opcode {
+            0x00 => (),
             opcode @ (0xC1 | 0xD1 | 0xE1 | 0xF1 | 0xC5 | 0xD5 | 0xE5 | 0xF5) => {
                 // POP / PUSH
                 let register_pair = match opcode & 0xF {
@@ -347,6 +348,33 @@ impl Cpu {
                     let hi = self.stack_pop();
                     self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
                 }
+            }
+            opcode @ (0x70 | 0x71) => {
+                let rotation_type = if opcode & 0xF == 0 {
+                    RotationType::Circular
+                } else {
+                    RotationType::Carry
+                };
+
+                self.execute_bitwise_rotate(Operand8::Register(Register8::A), BitwiseDirection::Left, rotation_type);
+            }
+            opcode @ (0x30 | 0x31 | 0x32 | 0x33 | 0xB0 | 0xB1 | 0xB3 ) => {
+                let operand = match opcode & 0xF {
+                    0 => Register16::Pair(RegisterPair::BC),
+                    1 => Register16::Pair(RegisterPair::DE),
+                    2 => Register16::Pair(RegisterPair::HL),
+                    3 => Register16::StackPointer,
+                    _ => unreachable!(),
+                };
+
+                let current_value = self.registers.read16(operand);
+                let value = if opcode >> 4 == 3 {
+                    current_value.wrapping_add(1)
+                } else {
+                    current_value.wrapping_sub(1)
+                };
+
+                self.registers.write16(operand, value);
             }
             _ => {
                 let immediate = self.next_program_byte();
@@ -429,6 +457,17 @@ impl Cpu {
                 } else {
                     self.execute_load(register_operand, address_operand);
                 }
+            }
+            opcode @ (0x01 | 0x11 | 0x21 | 0x31) => {
+                let register = match opcode >> 4 {
+                    0 => Register16::Pair(RegisterPair::BC),
+                    1 => Register16::Pair(RegisterPair::DE),
+                    2 => Register16::Pair(RegisterPair::HL),
+                    3 => Register16::StackPointer,
+                    _ => unreachable!(),
+                };
+
+                self.registers.write16(register, immediate);
             }
             _ => todo!()
         }
