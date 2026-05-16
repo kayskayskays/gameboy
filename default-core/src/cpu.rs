@@ -375,14 +375,20 @@ impl Cpu {
                     self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
                 }
             }
-            opcode @ (0x70 | 0x71) => {
-                let rotation_type = if opcode & 0xF == 0 {
+            opcode @ (0x07 | 0x17 | 0x0F | 0x1F) => {
+                let direction = if opcode & 0xF == 0x7 {
+                    BitwiseDirection::Left
+                } else {
+                    BitwiseDirection::Right
+                };
+
+                let rotation_type = if opcode >> 4 == 0 {
                     RotationType::Circular
                 } else {
                     RotationType::Carry
                 };
 
-                self.execute_bitwise_rotate(Operand8::Register(Register8::A), BitwiseDirection::Left, rotation_type);
+                self.execute_bitwise_rotate(Operand8::Register(Register8::A), direction, rotation_type);
             }
             opcode @ (0x30 | 0x31 | 0x32 | 0x33 | 0xB0 | 0xB1 | 0xB3 ) => {
                 let operand = match opcode & 0xF {
