@@ -21,7 +21,7 @@ pub(super) enum BitwiseInstruction {
     ModifyBit(Operand8, u8, SetMode),
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub(super) enum Operand8 {
     Immediate8(u8),
     Address(u16),

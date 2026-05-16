@@ -32,6 +32,26 @@ impl CarryStatus {
     }
 }
 
+struct ArithmeticOptions {
+    op_type: ArithmeticOperationType,
+    carry_mode: CarryMode,
+    set_carry_flag: bool,
+}
+
+impl ArithmeticOptions {
+    fn new(op_type: ArithmeticOperationType, carry_mode: CarryMode, set_carry_flag: bool) -> Self {
+        ArithmeticOptions { op_type, carry_mode, set_carry_flag }
+    }
+
+    fn with_carry(op_type: ArithmeticOperationType, carry_mode: CarryMode) -> Self {
+        Self::new(op_type, carry_mode, true)
+    }
+
+    fn without_carry(op_type: ArithmeticOperationType) -> Self {
+        Self::new(op_type, CarryMode::Without, false)
+    }
+}
+
 impl Cpu {
     fn new() -> Self {
         Cpu {
@@ -83,11 +103,11 @@ impl Cpu {
         self.address_bus.write(sp, value);
     }
 
-    fn read_value_from_operand(&self, operand: &Operand8) -> u8 {
+    fn read_value_from_operand(&self, operand: Operand8) -> u8 {
         match operand {
-            Operand8::Immediate8(immediate ) => *immediate,
-            Operand8::Address(address) => self.address_bus.read(*address),
-            Operand8::Register(register) => self.registers.read8(*register),
+            Operand8::Immediate8(immediate ) => immediate,
+            Operand8::Address(address) => self.address_bus.read(address),
+            Operand8::Register(register) => self.registers.read8(register),
             Operand8::AddressHl => self.address_bus.read(self.hl_pointer())
         }
     }
@@ -115,7 +135,7 @@ impl Cpu {
         match instruction {
             Load(dst, src) => self.execute_load(dst, src),
             Halt => self.halted = true,
-            Arithmetic(op, op_type, carry) => self.execute_arithmetic(op, op_type, carry),
+            Arithmetic(op, op_type, carry) => self.execute_accumulator_arithmetic(op, op_type, carry),
             Logical(op, op_type) => self.execute_logical(op, op_type),
             Compare(op) => self.execute_compare(op),
             Bitwise(bitwise_instruction) => self.execute_bitwise(bitwise_instruction),
@@ -123,38 +143,44 @@ impl Cpu {
     }
 
     fn execute_load(&mut self, dst: Operand8, src: Operand8) {
-        let value = self.read_value_from_operand(&src);
+        let value = self.read_value_from_operand(src);
         self.write_value_to_operand(&dst, value);
     }
 
-    fn execute_arithmetic(&mut self, operand: Operand8, op_type: ArithmeticOperationType, carry: CarryMode) {
-        let accumulator = self.accumulator();
-        let operand_value = self.read_value_from_operand(&operand);
+    fn execute_arithmetic(&mut self, dst: Operand8, src: Operand8, options: ArithmeticOptions) {
+        let dst_value = self.read_value_from_operand(dst);
+        let src_value = self.read_value_from_operand(src);
 
-        let carry = if let CarryMode::With = carry { 1 } else { 0 };
+        let flags = self.registers.flags();
 
-        let add = matches!(op_type, ArithmeticOperationType::Add);
-        let carry_status = CarryStatus::compute(accumulator, operand_value, carry, op_type);
+        let carry = if let CarryMode::With = options.carry_mode { flags.carry as u8 } else { 0 };
+
+        let add = matches!(options.op_type, ArithmeticOperationType::Add);
+        let carry_status = CarryStatus::compute(dst_value, src_value, carry, options.op_type);
 
         let result = if add {
-            accumulator.wrapping_add(operand_value).wrapping_add(carry)
+            dst_value.wrapping_add(src_value).wrapping_add(carry)
         }  else {
-            accumulator.wrapping_sub(operand_value).wrapping_sub(carry)
+            dst_value.wrapping_sub(src_value).wrapping_sub(carry)
         };
 
         self.registers.update_flags(|flags| {
             flags.zero = result == 0;
             flags.subtract = !add;
             flags.half_carry = carry_status.half_carry;
-            flags.carry = carry_status.carry;
+            flags.carry = if options.set_carry_flag { carry_status.carry } else { flags.carry };
         });
 
-        self.registers.write8(Register8::A, result)
+        self.write_value_to_operand(&dst, result)
+    }
+
+    fn execute_accumulator_arithmetic(&mut self, operand: Operand8, op_type: ArithmeticOperationType, carry: CarryMode) {
+        self.execute_arithmetic(Operand8::Register(Register8::A), operand, ArithmeticOptions::with_carry(op_type, carry));
     }
 
     fn execute_logical(&mut self, operand: Operand8, logical_op_type: LogicalInstructionType) {
         let accumulator = self.accumulator();
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let result =  match logical_op_type {
             LogicalInstructionType::And => accumulator & operand_value,
@@ -173,7 +199,7 @@ impl Cpu {
 
     fn execute_compare(&mut self, operand: Operand8) {
         let accumulator = self.accumulator();
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let carry_status = CarryStatus::compute(accumulator, operand_value, 0, ArithmeticOperationType::Sub);
         self.registers.update_flags(|flags| {
@@ -195,7 +221,7 @@ impl Cpu {
     }
 
     fn execute_bitwise_rotate(&mut self, operand: Operand8, direction: BitwiseDirection, rotation_type: RotationType) {
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let current_carry = if self.registers.flags().carry { 1 } else { 0 };
         let mut new_carry = current_carry;
@@ -238,7 +264,7 @@ impl Cpu {
     }
 
     fn execute_bitwise_shift(&mut self, operand: Operand8, direction: BitwiseDirection, shift_type: ShiftType) {
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let left = matches!(direction, BitwiseDirection::Left);
         let logical_shift = matches!(shift_type, ShiftType::Logical);
@@ -275,7 +301,7 @@ impl Cpu {
     }
 
     fn execute_bitwise_swap(&mut self, operand: Operand8) {
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let hi = operand_value & 0xF0;
         let lo = operand_value & 0xF;
@@ -286,13 +312,13 @@ impl Cpu {
     }
 
     fn execute_test_bit(&mut self, operand: Operand8, bit_idx: u8) {
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
         let bit_value = (operand_value >> bit_idx) & 0b1;
         self.registers.update_flags(|flags| flags.zero = bit_value != 0);
     }
 
     fn execute_set_bit(&mut self, operand: Operand8, bit_idx: u8, set_type: SetMode) {
-        let operand_value = self.read_value_from_operand(&operand);
+        let operand_value = self.read_value_from_operand(operand);
 
         let result = if matches!(set_type, SetMode::Set) {
             operand_value | (1 << bit_idx)
@@ -376,6 +402,32 @@ impl Cpu {
 
                 self.registers.write16(operand, value);
             }
+            opcode if opcode < 0x3F && matches!(opcode & 0xF, 0x4 | 0x5 | 0xC | 0xD) => {
+                let op_type = if (opcode - 0x4) % 8 == 0 {
+                    ArithmeticOperationType::Add
+                } else {
+                    ArithmeticOperationType::Sub
+                };
+
+                let table = if matches!(opcode & 0xF, 0x4 | 0x5) {
+                    [
+                        Operand8::Register(Register8::B),
+                        Operand8::Register(Register8::D),
+                        Operand8::Register(Register8::H),
+                        Operand8::AddressHl
+                    ]
+                } else {
+                    [
+                        Operand8::Register(Register8::C),
+                        Operand8::Register(Register8::E),
+                        Operand8::Register(Register8::L),
+                        Operand8::Register(Register8::A),
+                    ]
+                };
+
+                let operand = table[(opcode & 0xF0) as usize];
+                self.execute_arithmetic(operand, Operand8::Immediate8(1), ArithmeticOptions::without_carry(op_type));
+            }
             _ => {
                 let immediate = self.next_program_byte();
                 self.execute_raw_with_immediate8(opcode, immediate);
@@ -401,17 +453,17 @@ impl Cpu {
                     flags.carry = carry_status.carry;
                 })
             },
-            0xC6 => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::Add, CarryMode::Without),
-            0xD6 => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::Sub, CarryMode::Without),
-            0xCE => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::Add, CarryMode::With),
-            0xDE => self.execute_arithmetic(immediate_operand, ArithmeticOperationType::Sub, CarryMode::With),
+            0xC6 => self.execute_accumulator_arithmetic(immediate_operand, ArithmeticOperationType::Add, CarryMode::Without),
+            0xD6 => self.execute_accumulator_arithmetic(immediate_operand, ArithmeticOperationType::Sub, CarryMode::Without),
+            0xCE => self.execute_accumulator_arithmetic(immediate_operand, ArithmeticOperationType::Add, CarryMode::With),
+            0xDE => self.execute_accumulator_arithmetic(immediate_operand, ArithmeticOperationType::Sub, CarryMode::With),
             0xE6 => self.execute_logical(immediate_operand, LogicalInstructionType::And),
             0xF6 => self.execute_logical(immediate_operand, LogicalInstructionType::Or),
             0xEE => self.execute_logical(immediate_operand, LogicalInstructionType::Xor),
             0xFE => self.execute_compare(immediate_operand),
             opcode @ (0xE0 | 0xF0 | 0xE2 | 0xF2) => {
                 let address = if opcode & 0xF == 0x2 {
-                    self.read_value_from_operand(&Operand8::Register(Register8::C))
+                    self.read_value_from_operand(Operand8::Register(Register8::C))
                 } else {
                     immediate
                 } as u16 + 0xFF00;
@@ -448,6 +500,11 @@ impl Cpu {
 
     fn execute_raw_with_immediate16(&mut self, opcode: u8, immediate: u16) {
         match opcode {
+            0x08 => {
+                let sp = self.stack_pointer();
+                self.address_bus.write(immediate, (sp & 0xFF) as u8);
+                self.address_bus.write(immediate + 1, (sp >> 8) as u8)
+            }
             opcode @ (0xEA | 0xFA) => {
                 let address_operand = Operand8::Address(immediate);
                 let register_operand = Operand8::Register(Register8::A);
