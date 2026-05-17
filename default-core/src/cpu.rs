@@ -356,7 +356,7 @@ impl Cpu {
 
                 self.execute_bitwise_rotate(Operand8::Register(Register8::A), direction, rotation_type);
             }
-            opcode if matches!(opcode >> 4, 0x3 | 0xB) => {
+            opcode if matches!(opcode >> 4, 0x3 | 0x9 | 0xB) => {
                 let operand = match opcode & 0xF {
                     0 => Register16::Pair(RegisterPair::BC),
                     1 => Register16::Pair(RegisterPair::DE),
@@ -364,6 +364,14 @@ impl Cpu {
                     3 => Register16::StackPointer,
                     _ => unreachable!(),
                 };
+
+                if opcode & 0xF == 0x9 {
+                    let hl_register = Register16::Pair(RegisterPair::HL);
+                    let hl_value = self.registers.read16(hl_register);
+                    let operand_value = self.registers.read16(operand);
+                    self.registers.write16(hl_register, hl_value.wrapping_add(operand_value));
+                    return;
+                }
 
                 let current_value = self.registers.read16(operand);
                 let value = if opcode >> 4 == 3 {
@@ -433,6 +441,9 @@ impl Cpu {
                     flags.half_carry = false;
                     flags.carry = hi_nibble_correction_required;
                 });
+            }
+            opcode if opcode >> 4 == 0x9 => {
+
             }
             _ => {
                 let immediate = self.next_program_byte();
