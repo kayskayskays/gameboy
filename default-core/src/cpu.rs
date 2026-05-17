@@ -434,6 +434,40 @@ impl Cpu {
                 let operand = table[(opcode & 0xF0) as usize];
                 self.execute_arithmetic(operand, Operand8::Immediate8(1), ArithmeticOptions::without_carry(op_type));
             }
+            opcode @ (0x37 | 0x3F) => {
+                self.registers.update_flags(|flags| {
+                    flags.carry = if opcode & 0xF == 0x7 {
+                        true
+                    } else {
+                        !flags.carry
+                    }
+                })
+            }
+            0x2F => self.registers.write8(Register8::A, !self.registers.read8(Register8::A)),
+            0x27 => {
+                let mut value = self.accumulator();
+                let flags = self.registers.flags();
+
+                let apply_correction = if flags.subtract {
+                    u8::wrapping_sub
+                } else {
+                    u8::wrapping_add
+                };
+
+                let lo = value & 0x0F;
+                if flags.half_carry || lo > 9 { value = apply_correction(value, 0x06); };
+
+                let hi = value >> 4;
+                let hi_nibble_correction_required = flags.carry || hi > 9;
+                if hi_nibble_correction_required { value = apply_correction(value, 0x60); };
+
+                self.registers.write8(Register8::A, value);
+                self.registers.update_flags(|flags| {
+                    flags.zero = value == 0;
+                    flags.half_carry = false;
+                    flags.carry = hi_nibble_correction_required;
+                });
+            }
             _ => {
                 let immediate = self.next_program_byte();
                 self.execute_raw_with_immediate8(opcode, immediate);
