@@ -330,51 +330,17 @@ impl Cpu {
     }
 
     fn execute_raw(&mut self, opcode: u8) {
+        if opcode <= 0x3F {
+            self.execute_raw_block_one(opcode);
+        } else {
+            assert!(opcode >= 0x8F && opcode != 0xCB);
+            self.execute_raw_block_two(opcode);
+        }
+    }
+
+    fn execute_raw_block_one(&mut self, opcode: u8) {
         match opcode {
             0x00 => (),
-            opcode @ (0xC1 | 0xD1 | 0xE1 | 0xF1 | 0xC5 | 0xD5 | 0xE5 | 0xF5) => {
-                // POP / PUSH
-                let register_pair = match opcode & 0xF {
-                    0xC => RegisterPair::BC,
-                    0xD => RegisterPair::DE,
-                    0xE => RegisterPair::HL,
-                    0xF => RegisterPair::AF,
-                    _ => unreachable!(),
-                };
-
-                if opcode & 0xF == 1 {
-                    let lo = self.stack_pop();
-                    let hi = self.stack_pop();
-                    self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
-                } else {
-                    let value = self.registers.read16(register_pair.into());
-                    self.stack_push((value >> 8) as u8);
-                    self.stack_push(value as u8);
-                }
-            }
-            opcode @ (0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF) => {
-                // RST
-                self.stack_push((self.program_counter >> 8) as u8);
-                self.stack_push(self.program_counter as u8);
-                self.program_counter = (opcode - 0xC7) as u16;
-            }
-            opcode @ (0xC0 | 0xD0 | 0xC8 | 0xD8) => {
-                let flags = self.registers.flags();
-
-                let flag_set = if opcode & 0xF == 0xC {
-                    flags.zero
-                } else {
-                    flags.carry
-                };
-
-                let require_unset_flag = opcode & 0xF == 0x8;
-
-                if require_unset_flag ^ flag_set {
-                    let lo = self.stack_pop();
-                    let hi = self.stack_pop();
-                    self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
-                }
-            }
             opcode @ (0x07 | 0x17 | 0x0F | 0x1F) => {
                 let direction = if opcode & 0xF == 0x7 {
                     BitwiseDirection::Left
@@ -390,7 +356,7 @@ impl Cpu {
 
                 self.execute_bitwise_rotate(Operand8::Register(Register8::A), direction, rotation_type);
             }
-            opcode @ (0x30 | 0x31 | 0x32 | 0x33 | 0xB0 | 0xB1 | 0xB3 ) => {
+            opcode if matches!(opcode >> 4, 0x3 | 0xB) => {
                 let operand = match opcode & 0xF {
                     0 => Register16::Pair(RegisterPair::BC),
                     1 => Register16::Pair(RegisterPair::DE),
@@ -408,7 +374,7 @@ impl Cpu {
 
                 self.registers.write16(operand, value);
             }
-            opcode if opcode < 0x3F && matches!(opcode & 0xF, 0x4 | 0x5 | 0xC | 0xD) => {
+            opcode if matches!(opcode & 0xF, 0x4 | 0x5 | 0xC | 0xD) => {
                 let op_type = if (opcode - 0x4) % 8 == 0 {
                     ArithmeticOperationType::Add
                 } else {
@@ -467,6 +433,56 @@ impl Cpu {
                     flags.half_carry = false;
                     flags.carry = hi_nibble_correction_required;
                 });
+            }
+            _ => {
+                let immediate = self.next_program_byte();
+                self.execute_raw_with_immediate8(opcode, immediate);
+            }
+        }
+    }
+
+    fn execute_raw_block_two(&mut self, opcode: u8) {
+        match opcode {
+            opcode if matches!(opcode & 0xF, 0x1 | 0x5) => {
+                let register_pair = match opcode & 0xF {
+                    0xC => RegisterPair::BC,
+                    0xD => RegisterPair::DE,
+                    0xE => RegisterPair::HL,
+                    0xF => RegisterPair::AF,
+                    _ => unreachable!(),
+                };
+
+                if opcode & 0xF == 1 {
+                    let lo = self.stack_pop();
+                    let hi = self.stack_pop();
+                    self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
+                } else {
+                    let value = self.registers.read16(register_pair.into());
+                    self.stack_push((value >> 8) as u8);
+                    self.stack_push(value as u8);
+                }
+            }
+            opcode if matches!(opcode & 0xF, 0x7 | 0xF) => {
+                self.stack_push((self.program_counter >> 8) as u8);
+                self.stack_push(self.program_counter as u8);
+                self.program_counter = (opcode - 0xC7) as u16;
+            }
+            opcode @ (0xC0 | 0xD0 | 0xC8 | 0xD8) => {
+                let flags = self.registers.flags();
+
+                let flag_set = if opcode & 0xF == 0xC {
+                    flags.zero
+                } else {
+                    flags.carry
+                };
+
+                let require_unset_flag = opcode & 0xF == 0x8;
+
+                if require_unset_flag ^ flag_set {
+                    let lo = self.stack_pop();
+                    let hi = self.stack_pop();
+                    self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
+                }
             }
             _ => {
                 let immediate = self.next_program_byte();
