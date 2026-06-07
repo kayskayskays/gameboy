@@ -330,15 +330,32 @@ impl Cpu {
     }
 
     fn execute_raw(&mut self, opcode: u8) {
-        if opcode <= 0x3F {
-            self.execute_raw_block_one(opcode);
+        let matched = if opcode <= 0x3F {
+            self.execute_raw_block_one(opcode)
         } else {
             assert!(opcode >= 0x8F && opcode != 0xCB);
-            self.execute_raw_block_two(opcode);
+            self.execute_raw_block_two(opcode)
+        };
+
+        if matched {
+            self.execute_raw_with_immediate(opcode);
         }
     }
 
-    fn execute_raw_block_one(&mut self, opcode: u8) {
+    fn execute_raw_with_immediate(&mut self, opcode: u8) {
+        let immediate = self.next_program_byte();
+
+        if self.execute_raw_with_immediate8(opcode, immediate) {
+            return;
+        }
+
+        let next_immediate = self.next_program_byte();
+        self.execute_raw_with_immediate16(opcode, (immediate as u16) << 8 | (next_immediate as u16));
+    }
+
+    fn execute_raw_block_one(&mut self, opcode: u8) -> bool {
+        let mut matched = true;
+
         match opcode {
             0x00 => (),
             opcode @ (0x07 | 0x17 | 0x0F | 0x1F) => {
@@ -370,17 +387,16 @@ impl Cpu {
                     let hl_value = self.registers.read16(hl_register);
                     let operand_value = self.registers.read16(operand);
                     self.registers.write16(hl_register, hl_value.wrapping_add(operand_value));
-                    return;
-                }
-
-                let current_value = self.registers.read16(operand);
-                let value = if opcode >> 4 == 3 {
-                    current_value.wrapping_add(1)
                 } else {
-                    current_value.wrapping_sub(1)
-                };
+                    let current_value = self.registers.read16(operand);
+                    let value = if opcode >> 4 == 3 {
+                        current_value.wrapping_add(1)
+                    } else {
+                        current_value.wrapping_sub(1)
+                    };
 
-                self.registers.write16(operand, value);
+                    self.registers.write16(operand, value);
+                }
             }
             opcode if matches!(opcode & 0xF, 0x4 | 0x5 | 0xC | 0xD) => {
                 let op_type = if (opcode - 0x4) % 8 == 0 {
@@ -445,14 +461,15 @@ impl Cpu {
             opcode if opcode >> 4 == 0x9 => {
 
             }
-            _ => {
-                let immediate = self.next_program_byte();
-                self.execute_raw_with_immediate8(opcode, immediate);
-            }
-        }
+            _ => matched = false,
+        };
+
+        matched
     }
 
-    fn execute_raw_block_two(&mut self, opcode: u8) {
+    fn execute_raw_block_two(&mut self, opcode: u8) -> bool {
+        let mut matched = true;
+
         match opcode {
             opcode if matches!(opcode & 0xF, 0x1 | 0x5) => {
                 let register_pair = match opcode & 0xF {
@@ -466,7 +483,7 @@ impl Cpu {
                 if opcode & 0xF == 1 {
                     let lo = self.stack_pop();
                     let hi = self.stack_pop();
-                    self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16))
+                    self.registers.write16(register_pair.into(), (hi as u16) << 8 | (lo as u16));
                 } else {
                     let value = self.registers.read16(register_pair.into());
                     self.stack_push((value >> 8) as u8);
@@ -495,14 +512,14 @@ impl Cpu {
                     self.set_stack_pointer((hi as u16) << 8 | (lo as u16));
                 }
             }
-            _ => {
-                let immediate = self.next_program_byte();
-                self.execute_raw_with_immediate8(opcode, immediate);
-            }
-        }
+            _ => matched = false
+        };
+
+        matched
     }
 
-    fn execute_raw_with_immediate8(&mut self, opcode: u8, immediate: u8) {
+    fn execute_raw_with_immediate8(&mut self, opcode: u8, immediate: u8) -> bool {
+        let mut matched = true;
         let immediate_operand = Operand8::Immediate8(immediate);
 
         match opcode {
@@ -558,11 +575,10 @@ impl Cpu {
                     self.program_counter = self.program_counter.wrapping_add(immediate as i8 as i16 as u16);
                 }
             }
-            _ => {
-                let next_immediate = self.next_program_byte();
-                self.execute_raw_with_immediate16(opcode, (immediate as u16) << 8 | (next_immediate as u16));
-            }
+            _ => matched = false,
         }
+
+        matched
     }
 
     fn execute_raw_with_immediate16(&mut self, opcode: u8, immediate: u16) {
