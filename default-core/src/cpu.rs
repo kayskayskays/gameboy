@@ -281,7 +281,7 @@ impl Cpu {
             let shifted_operand_value = operand_value >> 1;
 
             let result = if logical_shift {
-                shifted_operand_value
+                 shifted_operand_value
             } else {
                 // If we're doing an arithmetic shift, then we need to ensure
                 // the hi-bit of the operand is the same as it was prior to
@@ -458,8 +458,30 @@ impl Cpu {
                     flags.carry = hi_nibble_correction_required;
                 });
             }
-            opcode if opcode >> 4 == 0x9 => {
+            opcode if opcode & 0xF == 0x9 => {
+                let operand = match opcode >> 4 {
+                    0 => Register16::Pair(RegisterPair::BC),
+                    1 => Register16::Pair(RegisterPair::DE),
+                    2 => Register16::Pair(RegisterPair::HL),
+                    3 => Register16::StackPointer,
+                    _ => unreachable!(),
+                };
 
+                let hl_value = self.registers.read16(Register16::Pair(RegisterPair::HL));
+                let op_value = self.registers.read16(operand);
+
+                // Whether there was overflow in the lo-nibble of the hi-byte.
+                let half_carry = (hl_value & 0x0FFF) + (op_value & 0x0FFF) > 0x0FFF;
+
+                let result = (hl_value as u32) + (op_value as u32);
+                let carry = result > 0xFFFF;
+
+                self.registers.write16(Register16::Pair(RegisterPair::HL), result as u16);
+                self.registers.update_flags(|flags| {
+                    flags.subtract = false;
+                    flags.carry = carry;
+                    flags.half_carry = half_carry;
+                });
             }
             _ => matched = false,
         };
